@@ -1,14 +1,16 @@
 import json
 import os
+import requests
 import streamlit as st
 import pandas as pd
 import torch
+from pathlib import Path
 from transformers import BertTokenizer, BertModel
-from huggingface_hub import hf_hub_download
 import torch.nn as nn
 import llm
 
-HF_REPO = "benmeyersUSC/tac459-ticket-models"
+HF_REPO   = "benmeyersUSC/tac459-ticket-models"
+MODELS_DIR = Path("models")
 
 
 # ── Model definitions ─────────────────────────────────────────────────────────
@@ -39,11 +41,38 @@ class BertCategoryClassifier(nn.Module):
         return self.classifier(cls)
 
 
+def _ensure_file(filename, display_name=None):
+    """Stream-download a file from HF Hub into models/ with a live progress bar.
+    Returns immediately (no network call) if the file already exists on disk."""
+    MODELS_DIR.mkdir(exist_ok=True)
+    dest = MODELS_DIR / filename
+    if dest.exists():
+        return str(dest)
+
+    url   = f"https://huggingface.co/{HF_REPO}/resolve/main/{filename}"
+    label = display_name or filename
+    with requests.get(url, stream=True, allow_redirects=True) as r:
+        r.raise_for_status()
+        total = int(r.headers.get('content-length', 0))
+        bar   = st.progress(0, text=f"Downloading {label}...")
+        done  = 0
+        with open(dest, 'wb') as f:
+            for chunk in r.iter_content(chunk_size=8 * 1024 * 1024):
+                f.write(chunk)
+                done += len(chunk)
+                if total:
+                    bar.progress(
+                        min(done / total, 1.0),
+                        text=f"{label}: {done/1e6:.0f} / {total/1e6:.0f} MB",
+                    )
+        bar.empty()
+    return str(dest)
+
+
 @st.cache_resource
-def load_urgency_model():
+def load_urgency_model(model_path):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-    model_path = hf_hub_download(repo_id=HF_REPO, filename="bert_urgency_refined.pth")
     model = BertUrgencyRegressor(dropout=0.3).to(device)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
@@ -51,11 +80,9 @@ def load_urgency_model():
 
 
 @st.cache_resource
-def load_category_model():
+def load_category_model(model_path, labels_path):
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-    model_path  = hf_hub_download(repo_id=HF_REPO, filename="bert_categorizer.pth")
-    labels_path = hf_hub_download(repo_id=HF_REPO, filename="bert_categorizer_labels.json")
     with open(labels_path) as f:
         label_map = json.load(f)
     label_names = [label_map[str(i)] for i in range(len(label_map))]
@@ -193,9 +220,15 @@ if uploaded_file is not None:
 
     st.info(f"Loaded {len(tickets)} tickets. Running inference...")
 
-    with st.spinner("Loading models..."):
-        urg_model, urg_tok, urg_device = load_urgency_model()
-        cat_model, cat_tok, cat_label_names, cat_device = load_category_model()
+    # Phase 1 — download weights if not already on disk (progress bars shown)
+    urg_path    = _ensure_file("bert_urgency_refined.pth",    "Urgency model (420 MB)")
+    cat_path    = _ensure_file("bert_categorizer.pth",        "Category model (420 MB)")
+    labels_path = _ensure_file("bert_categorizer_labels.json")
+
+    # Phase 2 — load into memory (cached for the session, fast after first load)
+    with st.spinner("Initializing models..."):
+        urg_model, urg_tok, urg_device = load_urgency_model(urg_path)
+        cat_model, cat_tok, cat_label_names, cat_device = load_category_model(cat_path, labels_path)
 
     st.caption("Scoring urgency...")
     prog1 = st.progress(0)

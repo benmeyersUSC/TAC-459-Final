@@ -217,5 +217,6 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-training_notebooks/bert_categorizer.pth
-#bert_urgency_refined.pth*.pth
+# model weights (hosted on HuggingFace Hub)
+*.pth
+models/
