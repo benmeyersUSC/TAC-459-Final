@@ -134,6 +134,38 @@ def score_to_tier(score, thresholds):
     return 'P3 - Low'
 
 
+def parse_upload(uploaded_file):
+    """Return (tickets, warnings). One ticket per line regardless of file type."""
+    raw = uploaded_file.read()
+    warnings = []
+
+    text = None
+    for enc in ('utf-8-sig', 'utf-8', 'latin-1', 'cp1252'):
+        try:
+            text = raw.decode(enc)
+            break
+        except (UnicodeDecodeError, LookupError):
+            continue
+    if text is None:
+        st.error("Could not decode the file. Please save it as UTF-8 and try again.")
+        st.stop()
+
+    tickets, skipped = [], 0
+    for line in text.splitlines():
+        line = line.strip().rstrip(',;|"\'').strip()
+        if len(line.split()) < 3:
+            if line:
+                skipped += 1
+            continue
+        tickets.append(line)
+
+    if skipped:
+        warnings.append(
+            f"{skipped} line(s) skipped — too short to be a ticket (fewer than 3 words)."
+        )
+    return tickets, warnings
+
+
 def predict_urgency(text, model, tokenizer, device, max_len=128):
     text = ' '.join(text.strip().split())
     enc = tokenizer(text, truncation=True, padding='max_length',
@@ -210,15 +242,41 @@ api_key = st.sidebar.text_input(
 # ── Main UI ───────────────────────────────────────────────────────────────────
 
 st.title("🎫 Intelligent Ticket Prioritizer")
-st.caption("Upload a .txt file with one ticket per line. Ranked by urgency, classified by category.")
 
-uploaded_file = st.file_uploader("Drop your tickets file here", type=["txt"])
+uploaded_file = st.file_uploader(
+    "Upload a ticket file (.txt or .csv)",
+    type=["txt", "csv"],
+)
+
+with st.expander("Accepted file formats"):
+    st.markdown(
+        "**One ticket per line** — `.txt` or `.csv`. "
+        "Trailing commas, semicolons, and quotes are stripped automatically.\n\n"
+        "```\n"
+        "Server is completely down, nobody can log in.\n"
+        "Please update my email address when you get a chance.\n"
+        "VPN drops every 5 minutes, blocking all remote work.\n"
+        "```\n\n"
+        "Lines with fewer than 3 words are ignored."
+    )
 
 if uploaded_file is not None:
-    lines = uploaded_file.read().decode("utf-8").splitlines()
-    tickets = [l.strip() for l in lines if l.strip()]
+    tickets, parse_warnings = parse_upload(uploaded_file)
 
-    st.info(f"Loaded {len(tickets)} tickets. Running inference...")
+    for w in parse_warnings:
+        st.warning(w)
+
+    if not tickets:
+        st.error("No valid tickets found in the file. Check the format guide above.")
+        st.stop()
+
+    with st.expander(f"Preview — {len(tickets)} tickets parsed"):
+        for i, t in enumerate(tickets[:10], 1):
+            st.caption(f"{i}. {t}")
+        if len(tickets) > 10:
+            st.caption(f"... and {len(tickets) - 10} more")
+
+    st.info(f"{len(tickets)} tickets loaded. Running inference...")
 
     # Phase 1 — download weights if not already on disk (progress bars shown)
     urg_path    = _ensure_file("bert_urgency_refined.pth",    "Urgency model (420 MB)")
