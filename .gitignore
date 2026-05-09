@@ -218,4 +218,4 @@ __marimo__/
 .streamlit/secrets.toml
 
 training_notebooks/bert_categorizer.pth
-bert_urgency_refined.pth
+#bert_urgency_refined.pth*.pth

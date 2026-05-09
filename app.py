@@ -4,8 +4,11 @@ import streamlit as st
 import pandas as pd
 import torch
 from transformers import BertTokenizer, BertModel
+from huggingface_hub import hf_hub_download
 import torch.nn as nn
 import llm
+
+HF_REPO = "benmeyersUSC/tac459-ticket-models"
 
 
 # ── Model definitions ─────────────────────────────────────────────────────────
@@ -37,9 +40,10 @@ class BertCategoryClassifier(nn.Module):
 
 
 @st.cache_resource
-def load_urgency_model(model_path):
+def load_urgency_model():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    model_path = hf_hub_download(repo_id=HF_REPO, filename="bert_urgency_refined.pth")
     model = BertUrgencyRegressor(dropout=0.3).to(device)
     model.load_state_dict(torch.load(model_path, map_location=device))
     model.eval()
@@ -47,9 +51,11 @@ def load_urgency_model(model_path):
 
 
 @st.cache_resource
-def load_category_model(model_path, labels_path):
+def load_category_model():
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
+    model_path  = hf_hub_download(repo_id=HF_REPO, filename="bert_categorizer.pth")
+    labels_path = hf_hub_download(repo_id=HF_REPO, filename="bert_categorizer_labels.json")
     with open(labels_path) as f:
         label_map = json.load(f)
     label_names = [label_map[str(i)] for i in range(len(label_map))]
@@ -156,12 +162,7 @@ for key, default in [
 # ── Sidebar ───────────────────────────────────────────────────────────────────
 
 st.sidebar.markdown("## Models")
-MODEL_PATH = st.sidebar.text_input(
-    "Urgency model (.pth)", value="bert_urgency_refined.pth"
-)
-CAT_MODEL_PATH = st.sidebar.text_input(
-    "Category model (.pth)", value="training_notebooks/bert_categorizer.pth"
-)
+st.sidebar.caption(f"Weights: [{HF_REPO}](https://huggingface.co/{HF_REPO})")
 
 st.sidebar.markdown("### Tier thresholds")
 p0_thresh = st.sidebar.slider("P0 (Critical) cutoff", 0.0, 1.0, 0.75, 0.05)
@@ -193,9 +194,8 @@ if uploaded_file is not None:
     st.info(f"Loaded {len(tickets)} tickets. Running inference...")
 
     with st.spinner("Loading models..."):
-        urg_model, urg_tok, urg_device = load_urgency_model(MODEL_PATH)
-        labels_path = CAT_MODEL_PATH.replace('.pth', '_labels.json')
-        cat_model, cat_tok, cat_label_names, cat_device = load_category_model(CAT_MODEL_PATH, labels_path)
+        urg_model, urg_tok, urg_device = load_urgency_model()
+        cat_model, cat_tok, cat_label_names, cat_device = load_category_model()
 
     st.caption("Scoring urgency...")
     prog1 = st.progress(0)
