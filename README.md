@@ -9,7 +9,7 @@ Requires Python 3.10+ and roughly 2 GB of free disk space for model weights.
 ```bash
 git clone https://github.com/benmeyersUSC/TAC-459-Final.git
 cd TAC-459-Final
-pip install -r requirements.txt
+python3 -m pip install -r requirements.txt
 streamlit run app.py
 ```
 
