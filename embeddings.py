@@ -18,13 +18,11 @@ def _get_model():
 
 
 def embed_text(text: str) -> np.ndarray:
-    """Return a 384-dim embedding vector for the given text."""
     model = _get_model()
     return model.encode(text, convert_to_numpy=True, show_progress_bar=False)
 
 
 def embed_texts(texts: List[str]) -> np.ndarray:
-    """Batch-embed a list of texts. Returns a 2D array of shape (len(texts), 384)."""
     model = _get_model()
     return model.encode(texts, convert_to_numpy=True, show_progress_bar=False)
 
@@ -38,18 +36,8 @@ def cosine_similarity(query: np.ndarray, candidates: np.ndarray) -> np.ndarray:
     return c_norms @ q_norm
 
 
-def find_similar_tickets(
-    new_ticket: str,
-    resolved_log: List[Dict],
-    top_k: int = 3,
-    min_similarity: float = 0.4,
-) -> List[Dict]:
-    """Given a new ticket and a list of resolved-ticket entries, return the top_k
-    most similar resolved tickets that have a response and exceed min_similarity.
-
-    Each returned entry includes the original log fields plus a 'similarity' score.
-    """
-    # Filter to only resolved tickets that have a response (RAG examples need responses)
+def find_similar_tickets(new_ticket: str,resolved_log: List[Dict],top_k: int = 3,min_similarity: float = 0.4,) -> List[Dict]:
+    # resolved only
     candidates = [e for e in resolved_log if e.get('response')]
     if not candidates:
         return []

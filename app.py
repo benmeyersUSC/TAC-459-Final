@@ -723,10 +723,32 @@ if tickets:
                 st.rerun()
 
         if st.session_state.draft:
-            # Show retrieved past tickets so agents can see what informed the draft
+            # RAG status banner — always shown so it's obvious whether the vector DB was used
             retrieved = st.session_state.get('last_retrieved', [])
             if retrieved:
-                with st.expander(f"📚 Drafted using {len(retrieved)} similar past tickets", expanded=False):
+                top_sim = retrieved[0]['similarity']
+                st.success(
+                    f"📚 **RAG active** — pulled {len(retrieved)} similar past ticket(s) "
+                    f"from the vector store (top similarity {top_sim:.2f}). "
+                    f"Expand below to see what was retrieved."
+                )
+            else:
+                resolved_count = sum(
+                    1 for e in st.session_state.resolved_log if e.get('response')
+                )
+                if resolved_count == 0:
+                    st.info(
+                        "📚 **RAG inactive** — no resolved tickets with responses in the log yet. "
+                        "Resolve a few drafts to start building the vector store."
+                    )
+                else:
+                    st.info(
+                        f"📚 **RAG ran** — searched {resolved_count} past ticket(s) "
+                        f"but none scored above the 0.4 similarity threshold."
+                    )
+
+            if retrieved:
+                with st.expander(f"📚 Show {len(retrieved)} retrieved tickets", expanded=True):
                     for i, ex in enumerate(retrieved, 1):
                         st.markdown(
                             f"<div style='padding:8px 12px; background:#F8FAFC; "
