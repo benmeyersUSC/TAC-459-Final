@@ -4,3 +4,5 @@ transformers
 pandas
 openai
 requests
+python-dotenv
+sentence-transformers

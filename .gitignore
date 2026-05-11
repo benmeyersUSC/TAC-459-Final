@@ -220,3 +220,6 @@ __marimo__/
 # model weights (hosted on HuggingFace Hub)
 *.pth
 models/
+
+# persistent resolved-ticket log
+resolved_tickets.json
