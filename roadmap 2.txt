@@ -1,0 +1,41 @@
+Product Roadmap: Intelligent Ticket Prioritization
+Team B:	Ben Meyers, Kate Olsen, Shirley Wang, Ashley Zapata Minero, Aditi Shankar,
+		Jerry Zong, and Ruochong Wang
+
+
+1. Product Motivation & Context
+Support teams at mid-market B2B SaaS companies cannot distinguish urgent, high-risk tickets from routine requests, leading to critical issues being missed, escalations increasing, and high-value accounts churning. For example, a billing issue that blocks operations may remain unresolved over the weekend due to its position in the queue. This is especially costly in companies ($10M–$100M ARR) where individual accounts represent $20K–$100K and teams handle 100–500+ tickets daily, making manual prioritization infeasible.
+The opportunity is that support tickets contain early churn signals (urgency, frustration, context), but current systems rely on static rules and cannot effectively interpret natural language. Existing platforms (Zendesk, Intercom) lack intelligent prioritization, while AI tools focus on reducing ticket volume rather than improving human decision-making.
+
+2. Target Users & Problems
+Primary users are support managers responsible for SLA adherence, queue performance, and agent allocation; secondary users include support agents (who need clear prioritization) and customer success managers (who monitor account risk). These users lack visibility into urgency, rely on manual triage that does not scale, and often identify high-risk issues too late, leading to escalations and churn.
+
+User journey: a ticket enters Zendesk/Intercom → the system assigns a real-time urgency score and category → urgent tickets surface to the top of the queue → agents respond faster, with AI-drafted replies grounded in past resolved tickets, preventing escalation and improving outcomes.
+
+3. Solution & Product Design
+The product is a lightweight prioritization layer that ingests support tickets and surfaces both an urgency score and a category for each one. Two custom-fine-tuned BERT models drive the inference: one regression model that produces a continuous urgency score in [0, 1], and one classifier that assigns each ticket to one of eight common SaaS-support categories (Hardware, Access, HR Support, Internal Project, Purchase, Storage, Administrative rights, Miscellaneous). Tickets are color-coded by tier (P0–P3) and category, and the queue is filterable along both axes.
+
+Beyond classification, the product layers an LLM (OpenAI) on top for three operational uses: (1) drafting customer-facing email responses for a selected ticket, (2) generating shift-briefings that summarize the current queue and call out the tickets that should be handled first, and (3) revising drafts based on quick agent shorthand (e.g. "team is on it, ETA 2 hrs"). All three are designed to keep the human in the loop — the agent reviews, edits, and sends.
+
+Resolved tickets are persisted to a local JSON store along with sentence-transformer embeddings. When the agent drafts a new response, a retrieval step finds the top-3 most similar past resolved tickets (cosine similarity over 384-dim embeddings) and feeds them to the LLM as in-context examples. This grounds draft style and tone in the team's actual prior work rather than generic boilerplate, and the system improves the more it is used.
+
+The application also supports an admin mode (password-gated) that exposes urgency-tier thresholds, the API key, and the full resolved-ticket history; non-admin agents see a clean queue-only view.
+
+4. Metrics & Success
+The product is evaluated on operational signals (time-to-first-response on high-priority tickets, queue throughput) and on model quality (urgency MAE and category accuracy on a held-out test set from the training corpora).
+
+5. GTM, Risks & Summary
+The go-to-market strategy targets mid-market SaaS companies that use Zendesk or Intercom and handle 100–500 tickets daily, starting with 3–5 design partners to validate improvements such as faster response times and fewer escalations.
+
+Key risks include model generalization across companies, data quality limitations, and misclassification of ambiguous language. The RAG grounding mitigates response-tone drift across customers, and the human-in-the-loop draft review provides a final guard against hallucinated commitments.
+
+In summary, support tickets already contain signals of urgency and churn risk, but current systems fail to surface them. This product surfaces those signals in real time, scaffolds the agent's response with grounded AI drafts, and turns each resolved ticket into a future training example for the system.
+
+6. Technical Design
+The system ships as a Streamlit application backed by two fine-tuned BERT-base-uncased models. Both were trained on Kaggle support-ticket corpora using a three-phase layered warmup schedule (head-only at 2e-5, then unfreezing the top three encoder layers at 1e-5, then full fine-tune at 5e-6) — a regime that consistently outperformed naive full fine-tuning or head-only training in our experiments. The urgency model is a regressor with a sigmoid head; the categorizer is an 8-way softmax classifier trained with inverse-frequency class weights to handle imbalance. Model weights are hosted on HuggingFace Hub and stream-downloaded on first launch.
+
+The LLM layer wraps the OpenAI Chat Completions API (gpt-4o-mini) with three task-specific prompts: a draft prompt that accepts retrieved past tickets as in-context examples, a briefing prompt that takes the full active queue, and a revision prompt that rewrites a draft given short agent notes. All prompts include category-specific tone hints and explicit guardrails against fabricating technical details or commitments.
+
+Retrieval over resolved tickets uses sentence-transformers (all-MiniLM-L6-v2) for embeddings and cosine similarity for ranking, with a minimum similarity threshold of 0.4 and top-3 retrieval. Embeddings are computed once at write-time and cached on the resolved-ticket record so retrieval stays fast as the log grows. Persistence is a flat JSON file (resolved_tickets.json) loaded into session state at startup.
+
+Training notebooks for both BERT models are included in training_notebooks/ for reproducibility.
